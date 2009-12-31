@@ -1,0 +1,137 @@
+Version 0.16
+  o Fixed a build error
+  o Added some utilities to util/
+
+Version 0.15
+  o Updated to latest available kernel version
+  o Large number of changes to bench-mmap by Leonid Ananiev
+      - The access time measurements surrounds now page touch module call
+        rather than all loop with other pages and files touching and
+	functions callings.
+      - Address access pattern is generated inside main loop but not read
+        from huge external file that creates additional memory load.
+      - Lognormal and Zipfian random number generator may be used now to
+	create access addresses.
+      - More statistic data is collected in smaller array volume since
+	average and max access time is collected for each page rank and for each
+	second interval only. Access time and vmstat data outputs are synchronized.
+      - More detailed virtual memory statistic are collected from /proc/vmstat
+        rather than from vmstat command output.
+
+Version 0.13
+------------
+  o Updated for 2.6.12-rc3
+  o Number of new benchmarks and modules added, all with docs
+
+Version 0.10a
+-------------
+  o Updated to support 2.6.0-test4
+
+Version 0.10
+------------
+  o Supports up to 2.5.73
+  o Fixed up usage of wrong type for IRQ flags
+  o Added patch and module for counting order of page allocations
+
+Version 0.9
+-----------
+  o Moved all module initialise code to a global init.c that is #included
+  o Moved all read/write proc code to a global proc.c that is #included
+  o Fixed the testproc module so that it wouldn't crash with pages > 10
+  o Taught the kvirtual module a lot about what is in the linear address space
+  o Removed a lot of common code that was in modules
+  o Perl scripts now use kernel modules to collect most data
+  o Perl scripts use as much common common code as possible
+  o Added perl library for the easier creation of reports
+  o Miscalculation in pagetable.o meant that mmap benchmarks were unreliable
+
+
+Version 0.8a
+------------
+  o Minor bug fixes in the core
+  o OSDL based merging
+    - Fixed the extract_structs.pl script to ensure its a struct been extracted
+    - Move the creation of internal.h from Makefiles to the configure script
+    - Use configure script to apply kernel patch if requested
+  o Read kernel release version directly from Kernel makefile
+  o Automatically generate makefiles depending on kernel version from configure
+  o Teach extract_structs.pl to identify a struct that is typedef'd
+  o vmr_mmzone.h has been expanded to map between different struct and field
+    names between kernel versions. Not many differences thankfully
+
+Version 0.7
+-----------
+  o Updated bench_mapanon.pl to perform read/write tests
+  o Adapted mapanon.o and changed to mmap.o so it can map file descriptors
+  o Adapted bench_mapanon.pl to bench_mmap.pl to be a generate mmap benchmark
+  o Told benchmark to preserve sampling data
+  o Time.pm exports new timing functions
+  o mapanon.o changed to mmap.o, handles files or anonymous memory
+  o Added graph to show page age vs page presence
+  o Added graph to show reference pattern
+  o Added replot.pl for easy replotting of time data
+  o Fixed access permissions to alloc and fault tests
+  o Removed stupid deadlock with alloc and fault modules 
+  o Various perl lib updates
+  o Will now compile against late 2.5.x kernels (untested)
+  o Automatically load and unload kernel modules
+
+Version 0.6
+-----------
+  o Allow multiple instances of tests to run. Only one will print to proc
+  o pagemap.o module will dump out address space with pages swapped/present
+  o mapanon.o benchmark, creates and references mmaped areas so that a script
+    can simulate program behaviour and see what the process space looks like
+    after
+  o Created various benchmark perl scripts.
+  o Created various support perl modules for running tests in bin/lib/VMR
+  o Print out kernel messages
+  o Moved the pagemap decode perl routines to a library
+  o Fixed CONFIG_HIGHMEM compile error
+  o Fixed spinlock redefine errors
+  o Fixed use of KERNEL_VERSION macro
+  o Fixed various possible deadlocks
+
+Version 0.5
+-----------
+  o Added a module kvirtual for printing out the vmalloc address space
+  o Allowed proc buffers to grow rather than disabling them
+  o Can now pass a pointer to user data into page table walk functions
+  o Proc buffers are now stored in the vmr_desc_t struct
+  o Proc buffers can be grown
+  o Process maps can be printed out to view present/swapped pages
+  o Created plot_map.pl which will plot a page present/swapped graph
+  o set plot_map.pl to output html pages upon request
+  o Updated kernel patches to 2.4.20pre2 . Should apply to 2.5.x
+
+Version 0.4
+-----------
+  o Updated alloc.c to take parameter at module load to use GFP_KERNEL
+  o Fixed pagetable walk
+  o Provided callback interface for walking pagetables (pagetable.o)
+  o Added ability to time tests with some measure of accuracy
+  o Add zone module to print out all zone information (zone.o)
+
+Version 0.3
+-----------
+  o Added kernel patch
+  o Test mmaps and page faults (fault.o)
+  o Centeralised pringing macros
+  o Makefile workarounds for UML quirks
+
+Version 0.2
+-----------
+  o Full physical allocation test (alloc.o)
+  o Works with 2.5.27
+  o Conditionally uses rmap if available
+  o Added configure script
+  o Alloc test will schedule if necessary
+
+Version 0.1
+-----------
+  o Initial release
+  o Proc test               (testproc.o)
+  o Display struct sizes    (sizes.o)
+  o Basic allocation test   (alloc_fast.o)
+  o Initial template module (template.o)
+  o Makefile

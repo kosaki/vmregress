@@ -1,0 +1,145 @@
+diff -rup -X /usr/src/patchset-0.5/bin//dontdiff linux-2.6.14-rc2-mm2-mbuddy-v16-tmp/include/linux/gfp.h linux-2.6.14-rc2-mm2-mbuddy-v16/include/linux/gfp.h
+--- linux-2.6.14-rc2-mm2-mbuddy-v16-tmp/include/linux/gfp.h	2005-10-04 22:10:33.000000000 +0100
++++ linux-2.6.14-rc2-mm2-mbuddy-v16/include/linux/gfp.h	2005-10-04 21:44:24.000000000 +0100
+@@ -159,4 +159,7 @@ void drain_remote_pages(void);
+ static inline void drain_remote_pages(void) { };
+ #endif
+ 
++/* VM Regress: define to indicate tracing callbacks is enabled */
++#define TRACE_PAGE_ALLOCS
++
+ #endif /* __LINUX_GFP_H */
+diff -rup -X /usr/src/patchset-0.5/bin//dontdiff linux-2.6.14-rc2-mm2-mbuddy-v16-tmp/mm/page_alloc.c linux-2.6.14-rc2-mm2-mbuddy-v16/mm/page_alloc.c
+--- linux-2.6.14-rc2-mm2-mbuddy-v16-tmp/mm/page_alloc.c	2005-10-04 22:10:36.000000000 +0100
++++ linux-2.6.14-rc2-mm2-mbuddy-v16/mm/page_alloc.c	2005-10-04 22:04:59.000000000 +0100
+@@ -53,6 +53,85 @@ unsigned long totalram_pages __read_most
+ unsigned long totalhigh_pages __read_mostly;
+ long nr_swap_pages;
+ 
++/* 
++ * VM Regress allocation counters
++ */
++unsigned long kernel_allocs[MAX_ORDER];
++unsigned long userrclm_allocs[MAX_ORDER];
++unsigned long kernrclm_allocs[MAX_ORDER];
++unsigned int *zone_maps[MAX_NR_ZONES];
++unsigned int zonemap_sizes[MAX_NR_ZONES];
++unsigned long lastdebug=0;
++#define VMRALLOC_FREE 0
++#define VMRALLOC_USERRCLM 1
++#define VMRALLOC_KERNEL 2
++#define VMRALLOC_KERNRCLM 3
++
++EXPORT_SYMBOL(kernel_allocs);
++EXPORT_SYMBOL(userrclm_allocs);
++EXPORT_SYMBOL(kernrclm_allocs);
++EXPORT_SYMBOL(zone_maps);
++EXPORT_SYMBOL(zonemap_sizes);
++
++/* VM Regress: Page alloc callback */
++static inline void set_zonemap(unsigned int order, struct page *page, int mask) {
++	/* Mark the allocation in the map */
++	struct zone *zone = page_zone(page);
++	int zoneidx;
++	unsigned int *map;
++	unsigned int index = page - zone->zone_mem_map;
++	unsigned int endindex = index + (1 << order);
++	int i=0;
++
++	zoneidx = page_zonenum(page);
++	if (zoneidx >= MAX_NR_ZONES) BUG();
++	map = zone_maps[zoneidx];
++	if (endindex < index) {
++		printk("VMRegress bug: endindex < index :: %ud < %ud",
++				endindex, index);
++		BUG();
++	}
++
++	for (i=index; i < endindex; i++) {
++		/* Paranoid debugging check in case of coding errors */
++		if (i > zonemap_sizes[zoneidx]) {
++			if (lastdebug - jiffies > 10000) {
++				printk("VMRegress Debug: Outside zonemap range. zone = %p page = %p, mapsize = %d, i = %d", zone, page, zonemap_sizes[page_zonenum(page)], i);
++				lastdebug = jiffies;
++			}
++			return;
++		}
++
++	  	map[i] = (order << 16) + mask;
++	}
++}
++
++static inline void tracealloc_callback(unsigned int gfp_mask, unsigned int order, struct page *page) {
++	int mask;
++	if (order >= MAX_ORDER) return;
++
++	if ((gfp_mask & __GFP_KERNRCLM) && (gfp_mask & __GFP_USER)) {
++	 	printk("D'oh\n");
++	}
++	if (gfp_mask & __GFP_KERNRCLM) {
++		kernrclm_allocs[order]++;
++		mask = VMRALLOC_KERNRCLM;
++	} else if (gfp_mask & __GFP_USER) { 
++		userrclm_allocs[order]++;
++		mask = VMRALLOC_USERRCLM;
++	} else {
++		kernel_allocs[order]++;
++		mask = VMRALLOC_KERNEL;
++	}
++
++	set_zonemap(order, page, mask);
++
++} 
++
++static inline void tracefree_callback(unsigned int order, struct page *page) {
++	set_zonemap(order, page, VMRALLOC_FREE);
++}
++
+ /*
+  * fallback_allocs contains the fallback types for low memory conditions
+  * where the preferred alloction type if not available.
+@@ -440,6 +519,7 @@ static inline void __free_pages_bulk (st
+ 
+ 	if (unlikely(order))
+ 		destroy_compound_page(page, order);
++	tracefree_callback(order, page);
+ 
+ 	page_idx = page_to_pfn(page) & ((1 << MAX_ORDER) - 1);
+ 
+@@ -1375,6 +1455,7 @@ got_pg:
+ 	set_page_owner(page, order, gfp_mask);
+ #endif
+ 	zone_statistics(zonelist, z);
++	tracealloc_callback(gfp_mask, order, page);
+ 	return page;
+ }
+ 
+@@ -2396,6 +2477,7 @@ static void __init free_area_init_core(s
+ 	unsigned long j;
+ 	int nid = pgdat->node_id;
+ 	unsigned long zone_start_pfn = pgdat->node_start_pfn;
++	unsigned long zonemapsize;
+ 
+ 	pgdat_resize_init(pgdat);
+ 	pgdat->nr_zones = 0;
+@@ -2444,6 +2526,20 @@ static void __init free_area_init_core(s
+ 		init_currently_empty_zone(zone, zone_start_pfn, size);
+ 		setup_usemap(pgdat, zone, size);
+ 		zone_start_pfn += size;
++
++		/* VMRegress: Initialise the zonemap to track allocations */
++		zonemapsize = (zone->spanned_pages+1) * sizeof(unsigned int);
++		printk("VMRegress: Initialising zone_map for zone %lu, size %lu for %lu pages", j, zonemapsize, size);
++		zone_maps[j] = alloc_bootmem_node(pgdat, zonemapsize);
++		if (zone_maps[j] == NULL) {
++			printk("VMRegress: Failed to allocate %lu bytes for zone_maps", zonemapsize);
++			BUG();
++		}
++		zonemap_sizes[j] = size+1;
++		memset(zone_maps[j], VMRALLOC_KERNEL, zonemapsize);
++		printk("VMRegress: Initialised %s\n", zone_names[j]);
++
++
+ #ifdef CONFIG_ALLOCSTATS
+ 		memset((unsigned long *)zone->fallback_count, 0,
+ 				sizeof(zone->fallback_count));

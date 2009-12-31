@@ -1,0 +1,128 @@
+diff -ru linux-2.6.9-clean/mm/page_alloc.c linux-2.6.9-vmregress/mm/page_alloc.c
+--- linux-2.6.9-clean/mm/page_alloc.c	2004-10-18 22:53:11.000000000 +0100
++++ linux-2.6.9-vmregress/mm/page_alloc.c	2005-01-02 17:51:50.000000000 +0000
+@@ -45,6 +45,75 @@
+ EXPORT_SYMBOL(totalram_pages);
+ EXPORT_SYMBOL(nr_swap_pages);
+ 
++/* 
++ * VM Regress allocation counters
++ */
++unsigned long kernel_allocs[MAX_ORDER];
++unsigned long userrclm_allocs[MAX_ORDER];
++unsigned long kernrclm_allocs[MAX_ORDER];
++unsigned int *zone_maps[MAX_NR_ZONES];
++unsigned int zonemap_sizes[MAX_NR_ZONES];
++unsigned int zone_maps_initialised=0;
++unsigned long lastdebug=0;
++#define VMRALLOC_FREE 0
++#define VMRALLOC_USERRCLM 1
++#define VMRALLOC_KERNEL 2
++#define VMRALLOC_KERNRCLM 3
++
++EXPORT_SYMBOL(kernel_allocs);
++EXPORT_SYMBOL(userrclm_allocs);
++EXPORT_SYMBOL(kernrclm_allocs);
++EXPORT_SYMBOL(zone_maps);
++EXPORT_SYMBOL(zonemap_sizes);
++
++/* VM Regress: Page alloc callback */
++void set_zonemap(unsigned int order, struct page *page, int mask) {
++	/* Mark the allocation in the map */
++	struct zone *zone = page_zone(page);
++	unsigned int *map = zone_maps[page->flags >> NODEZONE_SHIFT];
++	unsigned int index = page - zone->zone_mem_map;
++	int i=0;
++
++	for (i=index; i < index + (1 << order); i++) {
++		/* Paranoid debugging check in case of coding errors */
++		if (i > zonemap_sizes[page->flags >> NODEZONE_SHIFT]) {
++			if (lastdebug - jiffies > 10000) {
++				printk("VMRegress Debug: Outside zonemap range. zone = %p page = %p, mapsize = %d, i = %d", zone, page, zonemap_sizes[page->flags>>NODEZONE_SHIFT], i);
++				lastdebug = jiffies;
++			}
++			return;
++		}
++
++	  	map[i] = (order << 16) + mask;
++	}
++}
++
++void tracealloc_callback(unsigned int gfp_mask, unsigned int order, struct page *page) {
++	if (order >= MAX_ORDER) return;
++	int mask;
++
++	if ((gfp_mask & __GFP_KERNRCLM) && (gfp_mask & __GFP_USERRCLM)) {
++	 	printk("D'oh\n");
++	}
++	if (gfp_mask & __GFP_KERNRCLM) {
++		kernrclm_allocs[order]++;
++		mask = VMRALLOC_KERNRCLM;
++	} else if (gfp_mask & __GFP_USERRCLM) { 
++		userrclm_allocs[order]++;
++		mask = VMRALLOC_USERRCLM;
++	} else {
++		kernel_allocs[order]++;
++		mask = VMRALLOC_KERNEL;
++	}
++
++	set_zonemap(order, page, mask);
++
++} 
++
++void tracefree_callback(unsigned int order, struct page *page) {
++	set_zonemap(order, page, VMRALLOC_FREE);
++}
++
+ /*
+  * Used by page_zone() to look up the address of the struct zone whose
+  * id is encoded in the upper bits of page->flags
+@@ -180,6 +249,7 @@
+ 		struct zone *zone, struct free_area *area, unsigned int order)
+ {
+ 	unsigned long page_idx, index, mask;
++	tracefree_callback(order, page);
+ 
+ 	if (order)
+ 		destroy_compound_page(page, order);
+@@ -735,6 +805,10 @@
+ got_pg:
+ 	zone_statistics(zonelist, z);
+ 	kernel_map_pages(page, 1 << order, 1);
++
++	/* VMRegress: Record a page allocation took place */
++	tracealloc_callback(gfp_mask, order, page);
++
+ 	return page;
+ }
+ 
+@@ -1479,6 +1553,15 @@
+ 	int cpu, nid = pgdat->node_id;
+ 	unsigned long zone_start_pfn = pgdat->node_start_pfn;
+ 
++	/* VMRegress: initialise the map tracking the type of allocation 
++	 * It is initially marked as allocated by the kernel. As the pages
++	 * in the zone become available, they will be marked free
++	 */
++	if (!zone_maps_initialised) {
++		zone_maps_initialised = 1;
++		memset(zone_maps, VMRALLOC_KERNEL, sizeof(unsigned int *) * MAX_NR_ZONES);
++	}
++
+ 	pgdat->nr_zones = 0;
+ 	init_waitqueue_head(&pgdat->kswapd_wait);
+ 	
+@@ -1506,6 +1589,13 @@
+ 
+ 		zone->temp_priority = zone->prev_priority = DEF_PRIORITY;
+ 
++		/* VMRegress: Initialise the zonemap to track allocations */
++		int mapsize = (size+1) * sizeof(unsigned int);
++		zone_maps[j] = alloc_bootmem_node(pgdat, mapsize);
++		zonemap_sizes[j] = size+1;
++		memset(zone_maps[j], 0, mapsize);
++		printk("Initialised zone_map for zone %lu, size %d for %lu pages", j, mapsize, size);
++
+ 		/*
+ 		 * The per-cpu-pages pools are set to around 1000th of the
+ 		 * size of the zone.  But no more than 1/4 of a meg - there's

@@ -1,0 +1,74 @@
+--- linux-2.5.73-clean/include/linux/gfp.h	Sun Jun 22 19:32:38 2003
++++ linux-2.5.73-vmr/include/linux/gfp.h	Sun Jun 29 18:38:38 2003
+@@ -32,13 +32,14 @@
+ #define __GFP_NOFAIL	0x800	/* Retry for ever.  Cannot fail */
+ #define __GFP_NORETRY	0x1000	/* Do not retry.  Might fail */
+ #define __GFP_NO_GROW	0x2000	/* Slab internal usage */
++#define __GFP_USER	0x4000  /* VM Regress: track user allocations */
+ 
+ #define GFP_ATOMIC	(__GFP_HIGH)
+ #define GFP_NOIO	(__GFP_WAIT)
+ #define GFP_NOFS	(__GFP_WAIT | __GFP_IO)
+ #define GFP_KERNEL	(__GFP_WAIT | __GFP_IO | __GFP_FS)
+-#define GFP_USER	(__GFP_WAIT | __GFP_IO | __GFP_FS)
+-#define GFP_HIGHUSER	(__GFP_WAIT | __GFP_IO | __GFP_FS | __GFP_HIGHMEM)
++#define GFP_USER	(__GFP_WAIT | __GFP_IO | __GFP_FS | __GFP_USER)
++#define GFP_HIGHUSER	(__GFP_WAIT | __GFP_IO | __GFP_FS | __GFP_USER | __GFP_HIGHMEM)
+ 
+ /* Flag - indicates that the buffer will be suitable for DMA.  Ignored on some
+    platforms, used as appropriate on others */
+@@ -92,5 +93,8 @@
+ #define free_page(addr) free_pages((addr),0)
+ 
+ void page_alloc_init(void);
++
++/* VM Regress: define to indicate tracing callbacks is enabled */
++#define TRACE_PAGE_ALLOCS
+ 
+ #endif /* __LINUX_GFP_H */
+--- linux-2.5.73-clean/mm/page_alloc.c	Sun Jun 22 19:32:32 2003
++++ linux-2.5.73-vmr/mm/page_alloc.c	Sun Jun 29 19:09:20 2003
+@@ -41,6 +41,22 @@
+ int numnodes = 1;
+ int sysctl_lower_zone_protection = 0;
+ 
++/* 
++ *  * VM Regress allocation counters
++ *   */
++unsigned long kernel_allocs[MAX_ORDER];
++unsigned long user_allocs[MAX_ORDER];
++EXPORT_SYMBOL(kernel_allocs);
++EXPORT_SYMBOL(user_allocs);
++
++/* VM Regress: Page alloc callback */
++void tracealloc_callback(unsigned int gfp_mask, unsigned int order) {
++	if (order >= MAX_ORDER) return;
++
++	if (gfp_mask & __GFP_USER) user_allocs[order]++;
++	else kernel_allocs[order]++;
++} 
++
+ /*
+  * Used by page_zone() to look up the address of the struct zone whose
+  * id is encoded in the upper bits of page->flags
+@@ -540,6 +556,9 @@
+ 	cold = 0;
+ 	if (gfp_mask & __GFP_COLD)
+ 		cold = 1;
++
++	/* VM Regress: Record a page allocation took place */
++	tracealloc_callback(gfp_mask, order);
+ 
+ 	zones = zonelist->zones;  /* the list of zones suitable for gfp_mask */
+ 	classzone = zones[0]; 
+--- linux-2.5.73-clean/include/linux/slab.h	Sun Jun 22 19:33:35 2003
++++ linux-2.5.73-vmr/include/linux/slab.h	Sun Jun 29 18:24:52 2003
+@@ -27,7 +27,7 @@
+ 
+ #define SLAB_LEVEL_MASK		(__GFP_WAIT|__GFP_HIGH|__GFP_IO|__GFP_FS|\
+ 				__GFP_COLD|__GFP_NOWARN|__GFP_REPEAT|\
+-				__GFP_NOFAIL|__GFP_NORETRY)
++				__GFP_NOFAIL|__GFP_NORETRY|__GFP_USER)
+ 
+ #define	SLAB_NO_GROW		__GFP_NO_GROW	/* don't grow a cache */
+ 

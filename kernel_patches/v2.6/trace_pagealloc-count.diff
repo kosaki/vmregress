@@ -1,0 +1,79 @@
+diff -rup -X /usr/src/patchset-0.5/bin//dontdiff linux-2.6.11-rc1-mbuddy/include/linux/gfp.h linux-2.6.11-rc1-mbuddy-alloccount/include/linux/gfp.h
+--- linux-2.6.11-rc1-mbuddy/include/linux/gfp.h	2005-01-20 09:43:46.000000000 +0000
++++ linux-2.6.11-rc1-mbuddy-alloccount/include/linux/gfp.h	2005-01-21 21:03:17.000000000 +0000
+@@ -134,4 +134,7 @@ extern void FASTCALL(free_cold_page(stru
+ 
+ void page_alloc_init(void);
+ 
++/* VM Regress: define to indicate tracing callbacks is enabled */
++#define TRACE_PAGE_ALLOCS
++
+ #endif /* __LINUX_GFP_H */
+diff -rup -X /usr/src/patchset-0.5/bin//dontdiff linux-2.6.11-rc1-mbuddy/mm/page_alloc.c linux-2.6.11-rc1-mbuddy-alloccount/mm/page_alloc.c
+--- linux-2.6.11-rc1-mbuddy/mm/page_alloc.c	2005-01-20 09:50:22.000000000 +0000
++++ linux-2.6.11-rc1-mbuddy-alloccount/mm/page_alloc.c	2005-01-22 19:44:20.000000000 +0000
+@@ -70,6 +70,45 @@ int fallback_allocs[ALLOC_TYPES][ALLOC_T
+ };
+  
+ 
++/* 
++ * VM Regress allocation counters
++ */
++unsigned long kernrclm_allocs[MAX_ORDER];
++unsigned long kernnorclm_allocs[MAX_ORDER];
++unsigned long userrclm_allocs[MAX_ORDER];
++EXPORT_SYMBOL(kernrclm_allocs);
++EXPORT_SYMBOL(kernnorclm_allocs);
++EXPORT_SYMBOL(userrclm_allocs);
++
++/* 
++ * VM Regress free counters
++ */
++unsigned long kernrclm_free[MAX_ORDER];
++unsigned long kernnorclm_free[MAX_ORDER];
++unsigned long userrclm_free[MAX_ORDER];
++EXPORT_SYMBOL(kernrclm_free);
++EXPORT_SYMBOL(kernnorclm_free);
++EXPORT_SYMBOL(userrclm_free);
++
++/* VM Regress: Page alloc callback */
++void tracealloc_callback(unsigned int gfp_mask, unsigned int order) {
++	if (order >= MAX_ORDER) return;
++
++	if (gfp_mask & __GFP_USERRCLM) { userrclm_allocs[order]++; return; }
++	if (gfp_mask & __GFP_KERNRCLM) { kernrclm_allocs[order]++; return; }
++	kernnorclm_allocs[order]++;
++} 
++
++/* VM Regress: Page free callback */
++void tracefree_callback(int alloctype, unsigned int order) {
++	if (order >= MAX_ORDER) return;
++
++	if (alloctype == ALLOC_USERRCLM) { userrclm_free[order]++; return; }
++	if (alloctype == ALLOC_KERNRCLM) { kernrclm_free[order]++; return; }
++	kernnorclm_free[order]++;
++} 
++
++
+ /*
+  * Used by page_zone() to look up the address of the struct zone whose
+  * id is encoded in the upper bits of page->flags
+@@ -307,6 +346,8 @@ static inline void __free_pages_bulk (st
+ 	/* Select the areas to allocate based on the allocation type */
+ 	freelist = zone->free_area_lists[get_pageblock_type(page)];
+ 
++	tracefree_callback(get_pageblock_type(page), order);
++
+ 	zone->free_pages += order_size;
+ 	while (order < MAX_ORDER-1) {
+ 		struct page *buddy;
+@@ -870,6 +911,9 @@ __alloc_pages(unsigned int gfp_mask, uns
+ 
+ 	zones = zonelist->zones;  /* the list of zones suitable for gfp_mask */
+ 
++	/* VM Regress: Record a page allocation took place */
++	tracealloc_callback(gfp_mask, order);
++
+ 	if (unlikely(zones[0] == NULL)) {
+ 		/* Should this ever happen?? */
+ 		return NULL;

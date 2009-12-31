@@ -1,0 +1,15 @@
+0xfb404f5b	vmr_strtoul	/home/mel/Projects/vmregress/kernel_src/core/vmregress_core
+0x848d9dfd	swapper_space	/home/mel/Projects/vmregress/kernel_src/core/vmregress_core
+0x0a047845	countpages_mm	/home/mel/Projects/vmregress/kernel_src/core/pagetable
+0x3f7e3620	printp_buddyinfo	/home/mel/Projects/vmregress/kernel_src/core/buddyinfo
+0x8528aaf7	vmrproc_allocbuffer	/home/mel/Projects/vmregress/kernel_src/core/vmregress_core
+0xeebf0e21	get_pgdat_list	/home/mel/Projects/vmregress/kernel_src/core/vmregress_core
+0x9242f05e	pgdat_list	/home/mel/Projects/vmregress/kernel_src/core/vmregress_core
+0xc9b46f86	vmregress_proc_dir	/home/mel/Projects/vmregress/kernel_src/core/vmregress_core
+0x497c308c	vmrproc_growbuffer	/home/mel/Projects/vmregress/kernel_src/core/vmregress_core
+0xd5e9b2ff	forall_pte_mm	/home/mel/Projects/vmregress/kernel_src/core/pagetable
+0x74f3492a	vmr_strtol	/home/mel/Projects/vmregress/kernel_src/core/vmregress_core
+0xb64a86db	vmr_printmap	/home/mel/Projects/vmregress/kernel_src/core/pagetable
+0x45ab3677	vmrproc_freebuffer	/home/mel/Projects/vmregress/kernel_src/core/vmregress_core
+0x81551809	get_struct_page	/home/mel/Projects/vmregress/kernel_src/core/pagetable
+0x7456117f	check_resched_nocount	/home/mel/Projects/vmregress/kernel_src/core/vmregress_core

@@ -1,0 +1,23 @@
+TODO List
+---------
+
+o Update sizes.o to print full memory usage of all VM related structs
+
+o Give vmregress_core a proc entry for storing configuration information
+
+o Write many more tests including
+  - slab	- Test the slab allocator
+  - vmscan	- How effective is the page replacement algorithm
+  - fork	- Repeatadly fork and calculate work VM had to do
+  - vmscan	- Evaluate the performance of page replacement algorithms
+
+o Complete oprofile scripts for running highly detailed tests
+
+o Write tools that can perform statistical analysis on benchmark output
+
+o Write full whitepaper paper on how VM-Regress works and the motivations 
+  behind it
+
+o Export files to csv format
+
+o Fix alloc testing to use GFP flags based on module parameters

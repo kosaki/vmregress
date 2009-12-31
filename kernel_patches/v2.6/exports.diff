@@ -1,0 +1,26 @@
+diff -Naur linux-2.6.0-test3/include/linux/mmzone.h linux-2.6.0-test3-exports/include/linux/mmzone.h
+--- linux-2.6.0-test3/include/linux/mmzone.h	2003-08-08 23:37:23.000000000 -0500
++++ linux-2.6.0-test3-exports/include/linux/mmzone.h	2003-08-15 00:32:46.000000000 -0500
+@@ -18,6 +18,10 @@
+ #define MAX_NUMNODES 1
+ #endif
+ 
++/* VMRegress Defines for exports */
++#define PGDAT_LIST_EXPORTED
++#define MMLIST_LOCK_EXPORTED
++
+ /* Free memory management - zoned buddy allocator.  */
+ #ifndef CONFIG_FORCE_MAX_ZONEORDER
+ #define MAX_ORDER 11
+diff -Naur linux-2.6.0-test3/kernel/ksyms.c linux-2.6.0-test3-exports/kernel/ksyms.c
+--- linux-2.6.0-test3/kernel/ksyms.c	2003-08-08 23:31:15.000000000 -0500
++++ linux-2.6.0-test3-exports/kernel/ksyms.c	2003-08-15 00:34:04.000000000 -0500
+@@ -618,3 +618,8 @@
+ EXPORT_SYMBOL(console_printk);
+ 
+ EXPORT_SYMBOL(current_kernel_time);
++
++/* Exports for VMRegress */
++EXPORT_SYMBOL(pgdat_list);
++EXPORT_SYMBOL(mmlist_lock);
++EXPORT_SYMBOL(swapper_space);

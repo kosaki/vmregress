@@ -1,0 +1,27 @@
+--- linux-2.4.20-pre2-clean/include/linux/mmzone.h	Tue Aug 13 01:23:42 2002
++++ linux-2.4.20-pre2-vmr/include/linux/mmzone.h	Tue Aug 13 13:36:12 2002
+@@ -9,6 +9,10 @@
+ #include <linux/list.h>
+ #include <linux/wait.h>
+ 
++/* VMRegress Defines for exports */
++#define PGDAT_LIST_EXPORTED
++#define MMLIST_LOCK_EXPORTED
++
+ /*
+  * Free memory management - zoned buddy allocator.
+  */
+--- linux-2.4.20-pre2-clean/kernel/ksyms.c	Tue Aug 13 01:23:43 2002
++++ linux-2.4.20-pre2-vmr/kernel/ksyms.c	Tue Aug 13 13:36:12 2002
+@@ -72,6 +72,11 @@
+ };
+ #endif
+ 
++/* Exports for VMRegress */
++EXPORT_SYMBOL(pgdat_list);
++EXPORT_SYMBOL(mmlist_lock);
++
++
+ 
+ EXPORT_SYMBOL(inter_module_register);
+ EXPORT_SYMBOL(inter_module_unregister);

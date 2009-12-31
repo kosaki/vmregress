@@ -1,0 +1,412 @@
+Quick Guide To Compiling
+------------------------
+
+Run ./configure --help to see the options. To configure for a kernel sitting
+in /usr/src/linux-2.4.19, the easiest way to compile and get running is
+
+./configure --with-linux=/usr/src/linux-2.4.19
+make
+make install
+depmod -a
+
+This will install the modules to /lib/modules and allow modules to be loaded
+with modprobe. Each module will export an interface to /proc/vmregress . The
+modules are divided into sense and test. sense modules let you see whats in
+the kernel and test predictably tests something.
+
+Sense Modules
+-------------
+
+Name	Proc Entry	Description
+----	----------	-----------
+
+zone.o	sense_zones	This will print out information on each zone in the
+			system. For each zone, that is it's size, number of
+			free pages and the high, low and min watermarks
+
+sizes.o sense_structsizes This will print out the struct size of many VM
+			related structs.
+
+kvirtual.o sense_kvirtual This prints out the size of the vmalloc address space
+			Eventually it will print out all the mappings there
+
+pagemap.o pagemap_read	Will print out every VMA of the process and show
+			what pages are present or swapped out in encoded
+			format. The plot_map.pl script will decode the
+			information
+
+Test Modules
+------------
+
+With the alloc.o and fault.o modules, cat their proc entries on module load
+and a help message will be displayed. To run a test for either alloc.o or
+fault.o, two parameters may be passed. The first is how many times to run
+the test and the second (optional) parameter specifies how many pages to use.
+A sample test might be
+
+echo 1 > /proc/vmregress/test_fault_zero
+
+To run the test with just 100 pages, it would be
+
+echo 1 100 > /proc/vmregress/test_fault_zero
+
+Name 		Proc Entry	Description
+----		----------	-----------
+
+testproc.o	testproc	This tests the proc interface. At init it will
+				use 2 pages for printing out data. Cat the
+				entry to run the test. To change the number
+				of pages to test, echo the number of pages to
+				the entry. For example, to test with 5 pages,
+				run "echo 5 > /proc/vmregress/testproc"
+				and cat it again.
+
+alloc.o		test_alloc_fast This tests __alloc_pages for either GFP_ATOMIC
+		test_alloc_min	or GFP_KERNEL flags. By default, GFP_ATOMIC
+		test_alloc_low	is used. to use GFP_KERNEL, load the module
+		test_alloc_zero	with the option gfp_kernel=1 passed as a
+				parameter. 4 proc entries are exposed for
+				each watermark in the system. _fast will alloc
+				pages until the pages_high watermark is almost
+				hit. _low will alloc between the pages_min and
+				pages_low watermark. _min will alloc between
+				0 and pages_low watermark. _zero is a special
+				test. With GFP_ATOMIC, it will take a number
+				between pages_high and the total number of
+				pages in the zone and alloc that many pages if
+				possible and report failure if it couldn't.
+				With GFP_KERNEL, it will keep allocating until
+				no pages are free but be careful as this could
+				cause an OOM situation and will require a
+				reboot to get the pages back.
+
+				With the test output, two time values will be
+				printed out. The first is approximatly how
+				long in milliseconds it took to alloc
+				"Allocations per pass" number of pages. The
+				second is how long it took to free them
+
+fault.o		test_fault_fast This tests page faulting routines. The meaning
+				of the different tests is similar to the
+				alloc.o . The difference is that where
+				alloc.o calls __alloc_pages, fault.o creates
+				a region of memory with mmap and walks the
+				page tables touching pages as necessary to
+				force them to be swapped in.
+
+				The output of the test has four columns. The
+				first is what pass it was. The second is how
+				many pages were referenced and swapped in that
+				pass. The third is how many pages were still
+				present after the pass and Time is how long it
+				took the test to run.
+
+				At the bottom of the test, a map will be
+				printed out of the state of present/swapped
+				pages in the region. Each character is 4
+				pages. The lower bits are set if the
+				corresponding page is present or not. Two of
+				the upper bits are set to 1 to make the map
+				readable. The script plot_map.pl will read the
+				proc entry and use gnuplot to graph the output
+
+A Sample Test Scenario
+----------------------
+
+This is an example of a test that produces some useful information. It
+was run under kernel 2.4.18-UML but is known to work under 2.4.19 and will
+compile with 2.5.27-rmap (crash machine unavailable to test).
+
+The objective of the test is to force a tight memory situation where lots
+of swapping is taking place. This requires that swap is available, so make
+there there is enough swap space to take the test. The principle module is
+fault.o and uses zone.o to see before and after conditions
+
+First, the module load. The UML doesn't have depmod working well so the
+modules have to be manually loaded
+
+>>>
+usermode:/lib/modules/2.4.18-38um/vmregress# insmod ./vmregress_core.o 
+insmod: a module named vmregress_core already exists
+usermode:/lib/modules/2.4.18-38um/vmregress# insmod ./pagetable.o 
+pagetable: loaded
+usermode:/lib/modules/2.4.18-38um/vmregress# insmod ./zone.o 
+sense_zones: loaded
+usermode:/lib/modules/2.4.18-38um/vmregress# insmod ./fault.o 
+test_fault: loaded
+<<<
+
+All the modules are sucessfully loaded. The proc entries are now created, as
+we can see
+
+>>>
+usermode:/lib/modules/2.4.18-38um/vmregress# cd /proc/vmregress/
+usermode:/proc/vmregress# ls
+sense_zones  test_fault_fast  test_fault_low  test_fault_min  test_fault_zero
+usermode:/proc/vmregress# 
+<<<
+
+First, we'll take a look at the zone information. The tests can be run without
+it, they will determine how many pages to use themselves, but it's nice to
+take a look
+
+>>>
+usermode:/proc/vmregress# cat sense_zones 
+Node 0
+------
+ZONE_DMA                        ZONE_NORMAL                     
+zone->size       =        0     zone->size       =     8192     
+zone->free_pages =        0     zone->free_pages =     5748     
+zone->pages_high =        0     zone->pages_high =      192     
+zone->pages_low  =        0     zone->pages_low  =      128     
+zone->pages_min  =        0     zone->pages_min  =       64     
+
+
+usermode:/proc/vmregress# 
+<<<
+
+ok, we can see that there is 5748 pages free in ZONE_NORMAL which is the zone
+we are interested in. Lets run a test that is just above the free_pages mark,
+that will force a little bit of swapping but not much. To get some work zone,
+we'll tell the test to go over the mapped region 5 times swapping in pages
+that get swapped out.
+
+>>>
+usermode:/proc/vmregress# echo 5 5850 > test_fault_zero ; cat test_fault_zero 
+test_fault_zero Test Results.
+
+Zone Starting Information
+o zone->size       = 8192
+o zone->free_pages = 5769
+o zone->pages_high = 192
+o zone->pages_low  = 128
+o zone->pages_min  = 64
+
+Mapped Area Information
+o address:  0x40156000
+o length:   23961600 (5850 pages)
+
+Test Parameters
+o Passes:              5
+o Starting Free pages: 5769
+o Free page limit:     0
+o References:          5850
+
+Test Results
+(Pass   Refd    Present Time)
+0        5850    5850    326ms
+1        0       5850    0ms
+2        0       5850    0ms
+3        0       5850    0ms
+4        0       5850    19ms
+5        0       5850    0ms
+
+Post Test Information
+o Finishing Free pages: 6027
+o Schedule() calls:     9
+o Failed mappings:      0
+
+Test completed successfully
+
+<<<
+
+Not particularly interesting. You'll notice that slightly more free pages
+were avilable than expected (See "Starting Free Pages"). This meant that
+the system had no trouble freeing up the pages necessary to handle the test.
+The first pass took 326ms to map and alloc all the pages. Every other pass
+took too little time to be noticable (timing is based on jiffies). 
+
+At the end of the test 6027 pages were free and schedule() was called 9 times.
+
+Lets run the default test and see how much work has to be done
+
+>>>
+usermode:/proc/vmregress# echo 5 > test_fault_zero ; cat test_fault_zero 
+test_fault_zero Test Results.
+
+Zone Starting Information
+o zone->size       = 8192
+o zone->free_pages = 6026
+o zone->pages_high = 192
+o zone->pages_low  = 128
+o zone->pages_min  = 64
+
+Mapped Area Information
+o address:  0x40156000
+o length:   29118464 (7109 pages)
+
+Test Parameters
+o Passes:              5
+o Starting Free pages: 6026
+o Free page limit:     0
+o References:          7109
+
+Test Results
+(Pass   Refd    Present Time)
+0        7109    5725    634ms
+1        6091    6265    9269ms
+2        844     7109    0ms
+3        0       7109    0ms
+4        0       7109    19ms
+5        0       7109    0ms
+
+Post Test Information
+o Finishing Free pages: 7234
+o Schedule() calls:     25
+o Failed mappings:      0
+
+Test completed successfully
+
+<<<
+
+This is a bit more interesting. The first two passes had to work heavily to
+keep their pages in memory. At that stage, enough buffers or other space has
+been freed for all the pages to remain in memory. Thats why the second pass
+took so long. It ended up swapping in 6091 pages from swap space which is very
+time consuming. After that it was fine
+
+Now, lets run a test that forces memory. We'll run the test with as many
+pages as physical memory. In Kernel 2.4.18, this would foce the whole process
+to keep trying to swap in and out. It is presumed RMAP would improve this
+situation. In this case, pages should be constantly swapped in and how
+
+>>>
+usermode:/proc/vmregress# echo 5 8192 > test_fault_zero ; cat test_fault_zero 
+test_fault_zero Test Results.
+
+Zone Starting Information
+o zone->size       = 8192
+o zone->free_pages = 6841
+o zone->pages_high = 192
+o zone->pages_low  = 128
+o zone->pages_min  = 64
+
+Mapped Area Information
+o address:  0x40156000
+o length:   33554432 (8192 pages)
+
+Test Parameters
+o Passes:              5
+o Starting Free pages: 6841
+o Free page limit:     0
+o References:          8192
+
+Test Results
+(Pass   Refd    Present Time)
+0        8192    6062    711ms
+1        6607    6411    8192ms
+2        7417    6265    8807ms
+3        8192    5707    11596ms
+4        8192    5770    10057ms
+5        8192    6076    9846ms
+
+Post Test Information
+o Finishing Free pages: 7255
+o Schedule() calls:     54
+o Failed mappings:      0
+
+Test completed successfully
+<<<
+
+And it behaved as expected. By the third pass, all the pages had to be
+constantly swapped in and the value of present indicates that the pages were
+been swapped out as they were been swapped in. It is interesting to note that
+when the VM degrades for swapping processes, it degrades very quickly and very
+badly. This would be consistent with early reports stating that processes had
+a tendancy to grind to a halt under certain conditions
+
+At the end of these tests, the map representing the state of the pages was
+also printed. The plot_map.pl script can produce graphs and webpages of the
+test results. Run plot_map.pl --man for more information
+
+Benchmarking
+------------
+The manual PDF covers the benchmark modules and test scripts in detail. Each
+of the scripts have a man page. Access with the --man switch
+
+The benchmark modules are not standalone and have to be used with scripts. The
+following is some sample usage of the bench_mmap.pl script.
+
+TESTDIR=/var/www/vmr/
+# Generate 1,000,000 references for a region 25000 pages big
+generate_references.pl --size 25000 --references 1000000 --pattern smooth_sin \
+  	--output $TESTDIR/data/smooth_sin_25000
+
+# Generate a file to memory map
+dd if=/dev/zero of=$TESTDIR/data/filemap bs=4096 count=25000
+
+# Anon read test
+bench_mmap.pl --size 25000 --refdata $TESTDIR/data/smooth_sin_25000 \
+	--output $TESTDIR/mmap/read/25000/mapanon
+
+# File read test
+bench_mmap.pl --size 25000 --filemap $TESTDIR/data/filemap \
+	--refdata $TESTDIR/data/smooth_sin_25000 \
+	--output $TESTDIR/mmap/read/25000/mapfile
+
+# Anon write test
+bench_mmap.pl --size 25000 --write --refdata $TESTDIR/data/smooth_sin_25000 \
+	--output $TESTDIR/mmap/write/25000/mapanon
+
+# File write test
+bench_mmap.pl --size 50000 --write --refdata $TESTDIR/data/smooth_sin_50000 \
+	--output $TESTDIR/mmap/write/50000/mapanon
+
+
+Generating Reports
+------------------
+
+As of 0.7, helper scripts are provided to run automated tests and
+benchmarks. They are all contained within the bin directory and each comes
+with a man page accessible by using the --man switch which contained reasonably
+detailed information.
+
+The scripts are
+
+test_alloc.pl	Front end to the alloc.o test module
+test_fault.pl	Front end to the fault.o test module
+bench_mmap.pl	Front end to the mmap bench module for read/write tests with
+		either anonymous or file mapped memory
+
+Helper Scripts
+--------------
+
+Some helper scripts are provided to make life easier. Each comes with a man
+page accessible with --man
+
+generate_references.pl	This generates reference data for bench_mmap.pl
+
+randomize_references.pl This will randomize a set of page references produced
+			by generate_references.pl
+
+gnuplot.pl		This is a front end to the Graph.pm library. It is of
+			use when some graphs needed to be regenerated with
+			the .data files produced by the reports. It is very
+			rare this will be needed.
+
+replot_time.pl		The page time access graphs between tests can vary
+			a lot between differnet tests and kernels. To make
+			comparison between tests easier, the yscale of the
+			time graphs can be fixed using the time data saved
+			as a something-time.data file. This script makes it
+			very easy to regenerate the file.
+
+OProfile
+--------
+
+Small work has been started on using oprofile to get much more accurate
+information on how the tests are performing. The script is in the oprofile
+directory and currently needs to be manually edited to give it the directories
+
+Bug Reports
+-----------
+
+Send any reports to mel@csn.ul.ie . If anyone tests this, I would be
+interested in hearing about tests run on any of the following
+
+o NUMA machines
+o SMP machines
+o Memory > 1GB
+o Run on any 2.5.x kernel
+
+Just to hear if they worked or not.

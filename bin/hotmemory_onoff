@@ -1,0 +1,237 @@
+#!/bin/bash
+cd /sys/devices/system/memory
+
+##### Helper functions #####
+
+# Print debugging information
+DEBUG=1
+dbg_echo() {
+  if [ "$DEBUG" = "1" ]; then
+    echo dbg: "$@"
+  fi
+}
+
+# Sets the number of bank numbers
+# Returns $NUM_BANKS
+get_maxbank_index() {
+  banks=`ls -d memory* | sed -e 's/memory//' | sort -n | tail -1`
+  if [ -e /tmp/memplug_bankidx ]; then
+    max_measured=`cat /tmp/memplug_bankidx`
+    if [ "$max_measured" != "" ] && [ $max_measured -gt $banks ]; then
+      banks=$max_measured
+    fi
+  fi
+  echo $banks > /tmp/memplug_bankidx
+  export NUM_BANKS=$banks
+  dbg_echo Number of banks $NUM_BANKS
+}
+
+# Return the address for a given bank number
+# Returns $MID_ADDR
+memory_id_to_addr() {
+  # Check if the segment size can be discovered but assume
+  # it is 64MB if it cannot be
+  SEGMENT_SIZE=$((64*1048576))
+  if [ -e /sys/devices/system/memory/block_size_bytes ]; then
+    SEGMENT_SIZE_HEX=`cat /sys/devices/system/memory/block_size_bytes`
+    SEGMENT_SIZE=`printf "%d" 0x$SEGMENT_SIZE_HEX`
+  fi
+
+  ADDR=$(($1*$SEGMENT_SIZE))
+  export MID_ADDR=`printf "0x%lX\n" $(($1*$SEGMENT_SIZE))`
+}
+
+# Check for oops. Exits if one is seen in dmesg
+check_for_oops() {
+  # Check if an oops has occured
+  TEST=`dmesg | grep -i oops:`
+  if [ "$TEST" != "" ]; then
+    echo An oops is in the dmesg output. Giving up, just in case
+    exit
+  fi
+  
+  # Check if an error involving int3 occured
+  TEST=`dmesg | grep -i int3:`
+  if [ "$TEST" != "" ]; then
+    echo An int3 error is in the dmesg output. Giving up, just in case
+    exit
+  fi
+}
+
+# Update counters based on a bank
+update_bank_stats() {
+  i=$1
+
+  state=""
+  if [ -e memory$i/state ]; then
+    state=`cat memory$i/state`
+  fi
+  if [ "$state" = "offline" ] || [ "$state" = "" ]; then
+    offline=$(($offline+1))
+  elif [ "$state" = "online" ]; then
+    online=$(($online+1))
+  elif [ "$state" = "going-offline" ]; then
+    going_offline=$(($going_offline+1))
+  else
+    echo Unknown state: $state
+  fi
+}
+
+##### End of helper functions #####
+
+##### Onlining memory #############
+online_bank() {
+  i=$1
+
+  # If the bank does not exist, try and bring it online by probing
+  if [ ! -e memory$i/state ]; then
+
+    # Try and probe for the bank
+    memory_id_to_addr $i
+    echo -n "Probing bank $i at $MID_ADDR: "
+    if [ -e probe ]; then
+      echo $MID_ADDR > probe
+      sleep_count=0
+      while [ ! -e memory$i/state ] && [ $sleep_count -lt 2 ]; do
+        sleep_count=$(($sleep_count+1))
+        sleep 1
+      done
+    else
+      echo -n "no probe available "
+      exit 1
+    fi
+
+    # Check if the probe was successful
+    if [ ! -e memory$i/state ]; then
+      echo failed
+    else
+      echo success
+    fi
+  fi
+
+  # If the bank exists, see if it needs to be onlined
+  if [ -e memory$i/state ]; then
+    state=`cat memory$i/state`
+
+    # Check if the bank if offline, if so, bring it on
+    if [ "$state" = "offline" ]; then
+      printf "Attempting to online bank %3d (%3d/%3d): " $i $bank $NUM_BANKS
+      echo online > memory$i/state &
+      echo_pid="$!"
+
+      # Wait for up to 2 seconds to online
+      sleep_count=0;
+      while [ "$state" != "online" ] && [ $sleep_count -lt 2 ]; do
+        sleep_count=$(($sleep_count+1))
+        state=`cat memory$i/state`
+        sleep 1
+      done
+      echo $state
+    fi
+    update_bank_stats $i
+  fi
+
+}
+##### End of onlining memory #############
+
+##### Offlining memory ###################
+offline_bank() {
+  i=$1
+
+  printf "Attempting to offline bank %3d (%3d/%3d): " $i $bank $NUM_BANKS
+  state=online
+  if [ -e memory$i/state ]; then
+    echo offline > memory$i/state &
+  else
+    state=offline
+  fi
+
+  # Wait for up to 2 seconds to offline
+  sleep_count=0;
+  while [ -e memory$i/state ] && [ "$state" = "online" ] && [ $sleep_count -lt 2 ]; do
+    sleep_count=$(($sleep_count+1))
+    state=`cat memory$i/state 2> /dev/null`
+    sleep 1
+  done
+  echo $state
+
+  update_bank_stats $i
+}
+####### End offling a bank #############
+
+# Initialise
+get_maxbank_index
+max_banknum=$(($NUM_BANKS-1))
+
+# Decide whether to online everything
+if [ "$1" = "online" ]; then
+  bank=0
+  online=0
+  offline=0
+  going_offline=0
+  for i in `seq 0 $max_banknum`; do
+    bank=$(($bank+1))
+    online_bank $i
+    check_for_oops
+  done
+
+  printf "Number of banks online:  %3d (%d%%)\n" $online $(($online*100/$NUM_BANKS))
+  printf "Number of banks offline: %3d (%d%%)\n" $offline $(($offline*100/$NUM_BANKS))
+  exit
+fi
+
+# If not, check whether to offline everything
+if [ "$1" = "offline" ]; then
+  online=0
+  offline=0
+  going_offline=0
+  bank=0
+
+  # Cycle through all bank canditates
+  for i in `seq $bank $max_banknum`; do
+    bank=$(($bank+1))
+    offline_bank $i
+    check_for_oops
+  done
+
+  # Check if there are banks still going offline
+  if [ "$going_offline" != "0" ]; then
+    for i in `seq 0 $max_banknum`; do
+      if [ -e memory$i/state ]; then
+        state=`cat memory$i/state`
+	if [ "$state" = "going-offline" ]; then
+	  echo -n "Waiting for bank $i to change from going-offline state: "
+	  while [ "$state" = "going-offline" ]; do
+            state=`cat memory$i/state 2> /dev/null`
+	  done
+	  if [ "$state" = "online" ]; then
+	    echo online
+	  else
+	    echo offline
+	  fi
+	  going_offline=$(($going_offline-1))
+	  update_bank_stats $i
+	fi
+      fi
+    done
+
+    # Recheck the state of all banks
+    online=0
+    offline=0
+    going_offline=0
+    for i in `seq 0 $max_banknum`; do
+      update_bank_stats $i
+    done
+  fi
+
+  # Print report
+  printf "Number of banks online:  %3d (%d%%)\n" $online $(($online*100/$NUM_BANKS))
+  printf "Number of banks offline: %3d (%d%%)\n" $offline $(($offline*100/$NUM_BANKS))
+  exit
+fi
+
+# Print usage message
+echo "Usage: hotmemory_onoff [online|offline]"
+echo
+
+

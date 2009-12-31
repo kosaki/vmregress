@@ -1,0 +1,249 @@
+diff -rup -X /usr/src/patchset-0.5/bin//dontdiff linux-2.6.12-rc5-standard/fs/buffer.c linux-2.6.12-rc5-standard-measure/fs/buffer.c
+--- linux-2.6.12-rc5-standard/fs/buffer.c	2005-05-25 04:31:20.000000000 +0100
++++ linux-2.6.12-rc5-standard-measure/fs/buffer.c	2005-05-31 12:32:59.000000000 +0100
+@@ -1135,7 +1135,7 @@ grow_dev_page(struct block_device *bdev,
+ 	struct page *page;
+ 	struct buffer_head *bh;
+ 
+-	page = find_or_create_page(inode->i_mapping, index, GFP_NOFS);
++	page = find_or_create_page(inode->i_mapping, index, GFP_NOFS| __GFP_USERRCLM);
+ 	if (!page)
+ 		return NULL;
+ 
+@@ -3056,7 +3056,7 @@ static void recalc_bh_state(void)
+ 	
+ struct buffer_head *alloc_buffer_head(unsigned int __nocast gfp_flags)
+ {
+-	struct buffer_head *ret = kmem_cache_alloc(bh_cachep, gfp_flags);
++	struct buffer_head *ret = kmem_cache_alloc(bh_cachep, gfp_flags|__GFP_KERNRCLM);
+ 	if (ret) {
+ 		preempt_disable();
+ 		__get_cpu_var(bh_accounting).nr++;
+diff -rup -X /usr/src/patchset-0.5/bin//dontdiff linux-2.6.12-rc5-standard/fs/dcache.c linux-2.6.12-rc5-standard-measure/fs/dcache.c
+--- linux-2.6.12-rc5-standard/fs/dcache.c	2005-05-25 04:31:20.000000000 +0100
++++ linux-2.6.12-rc5-standard-measure/fs/dcache.c	2005-05-31 12:32:59.000000000 +0100
+@@ -719,7 +719,8 @@ struct dentry *d_alloc(struct dentry * p
+ 	struct dentry *dentry;
+ 	char *dname;
+ 
+-	dentry = kmem_cache_alloc(dentry_cache, GFP_KERNEL); 
++	//dentry = kmem_cache_alloc(dentry_cache, GFP_KERNEL|__GFP_KERNRCLM);
++	dentry = kmem_cache_alloc(dentry_cache, GFP_KERNEL);
+ 	if (!dentry)
+ 		return NULL;
+ 
+diff -rup -X /usr/src/patchset-0.5/bin//dontdiff linux-2.6.12-rc5-standard/fs/ext2/super.c linux-2.6.12-rc5-standard-measure/fs/ext2/super.c
+--- linux-2.6.12-rc5-standard/fs/ext2/super.c	2005-05-25 04:31:20.000000000 +0100
++++ linux-2.6.12-rc5-standard-measure/fs/ext2/super.c	2005-05-31 12:32:59.000000000 +0100
+@@ -137,7 +137,7 @@ static kmem_cache_t * ext2_inode_cachep;
+ static struct inode *ext2_alloc_inode(struct super_block *sb)
+ {
+ 	struct ext2_inode_info *ei;
+-	ei = (struct ext2_inode_info *)kmem_cache_alloc(ext2_inode_cachep, SLAB_KERNEL);
++	ei = (struct ext2_inode_info *)kmem_cache_alloc(ext2_inode_cachep, SLAB_KERNEL|__GFP_KERNRCLM);
+ 	if (!ei)
+ 		return NULL;
+ #ifdef CONFIG_EXT2_FS_POSIX_ACL
+diff -rup -X /usr/src/patchset-0.5/bin//dontdiff linux-2.6.12-rc5-standard/fs/ext3/super.c linux-2.6.12-rc5-standard-measure/fs/ext3/super.c
+--- linux-2.6.12-rc5-standard/fs/ext3/super.c	2005-05-25 04:31:20.000000000 +0100
++++ linux-2.6.12-rc5-standard-measure/fs/ext3/super.c	2005-05-31 12:32:59.000000000 +0100
+@@ -440,7 +440,7 @@ static struct inode *ext3_alloc_inode(st
+ {
+ 	struct ext3_inode_info *ei;
+ 
+-	ei = kmem_cache_alloc(ext3_inode_cachep, SLAB_NOFS);
++	ei = kmem_cache_alloc(ext3_inode_cachep, SLAB_NOFS|__GFP_KERNRCLM);
+ 	if (!ei)
+ 		return NULL;
+ #ifdef CONFIG_EXT3_FS_POSIX_ACL
+diff -rup -X /usr/src/patchset-0.5/bin//dontdiff linux-2.6.12-rc5-standard/fs/ntfs/inode.c linux-2.6.12-rc5-standard-measure/fs/ntfs/inode.c
+--- linux-2.6.12-rc5-standard/fs/ntfs/inode.c	2005-05-25 04:31:20.000000000 +0100
++++ linux-2.6.12-rc5-standard-measure/fs/ntfs/inode.c	2005-05-31 12:32:59.000000000 +0100
+@@ -318,7 +318,7 @@ struct inode *ntfs_alloc_big_inode(struc
+ 
+ 	ntfs_debug("Entering.");
+ 	ni = (ntfs_inode *)kmem_cache_alloc(ntfs_big_inode_cache,
+-			SLAB_NOFS);
++			SLAB_NOFS|__GFP_KERNRCLM);
+ 	if (likely(ni != NULL)) {
+ 		ni->state = 0;
+ 		return VFS_I(ni);
+@@ -343,7 +343,7 @@ static inline ntfs_inode *ntfs_alloc_ext
+ 	ntfs_inode *ni;
+ 
+ 	ntfs_debug("Entering.");
+-	ni = (ntfs_inode *)kmem_cache_alloc(ntfs_inode_cache, SLAB_NOFS);
++	ni = (ntfs_inode *)kmem_cache_alloc(ntfs_inode_cache, SLAB_NOFS|__GFP_KERNRCLM);
+ 	if (likely(ni != NULL)) {
+ 		ni->state = 0;
+ 		return ni;
+diff -rup -X /usr/src/patchset-0.5/bin//dontdiff linux-2.6.12-rc5-standard/include/linux/gfp.h linux-2.6.12-rc5-standard-measure/include/linux/gfp.h
+--- linux-2.6.12-rc5-standard/include/linux/gfp.h	2005-05-25 04:31:20.000000000 +0100
++++ linux-2.6.12-rc5-standard-measure/include/linux/gfp.h	2005-05-31 12:34:24.000000000 +0100
+@@ -39,6 +39,8 @@ struct vm_area_struct;
+ #define __GFP_COMP	0x4000u	/* Add compound page metadata */
+ #define __GFP_ZERO	0x8000u	/* Return zeroed page on success */
+ #define __GFP_NOMEMALLOC 0x10000u /* Don't use emergency reserves */
++#define __GFP_USERRCLM  0x20000u
++#define __GFP_KERNRCLM  0x40000u
+ 
+ #define __GFP_BITS_SHIFT 20	/* Room for 20 __GFP_FOO bits */
+ #define __GFP_BITS_MASK ((1 << __GFP_BITS_SHIFT) - 1)
+@@ -47,14 +49,14 @@ struct vm_area_struct;
+ #define GFP_LEVEL_MASK (__GFP_WAIT|__GFP_HIGH|__GFP_IO|__GFP_FS| \
+ 			__GFP_COLD|__GFP_NOWARN|__GFP_REPEAT| \
+ 			__GFP_NOFAIL|__GFP_NORETRY|__GFP_NO_GROW|__GFP_COMP| \
+-			__GFP_NOMEMALLOC)
++			__GFP_NOMEMALLOC|__GFP_USERRCLM|__GFP_KERNRCLM)
+ 
+ #define GFP_ATOMIC	(__GFP_HIGH)
+ #define GFP_NOIO	(__GFP_WAIT)
+ #define GFP_NOFS	(__GFP_WAIT | __GFP_IO)
+ #define GFP_KERNEL	(__GFP_WAIT | __GFP_IO | __GFP_FS)
+-#define GFP_USER	(__GFP_WAIT | __GFP_IO | __GFP_FS)
+-#define GFP_HIGHUSER	(__GFP_WAIT | __GFP_IO | __GFP_FS | __GFP_HIGHMEM)
++#define GFP_USER	(__GFP_WAIT | __GFP_IO | __GFP_FS | __GFP_USERRCLM)
++#define GFP_HIGHUSER	(__GFP_WAIT | __GFP_IO | __GFP_FS | __GFP_HIGHMEM | __GFP_USERRCLM)
+ 
+ /* Flag - indicates that the buffer will be suitable for DMA.  Ignored on some
+    platforms, used as appropriate on others */
+@@ -133,4 +135,7 @@ extern void FASTCALL(free_cold_page(stru
+ 
+ void page_alloc_init(void);
+ 
++/* VM Regress: define to indicate tracing callbacks is enabled */
++#define TRACE_PAGE_ALLOCS
++
+ #endif /* __LINUX_GFP_H */
+diff -rup -X /usr/src/patchset-0.5/bin//dontdiff linux-2.6.12-rc5-standard/mm/page_alloc.c linux-2.6.12-rc5-standard-measure/mm/page_alloc.c
+--- linux-2.6.12-rc5-standard/mm/page_alloc.c	2005-05-25 04:31:20.000000000 +0100
++++ linux-2.6.12-rc5-standard-measure/mm/page_alloc.c	2005-05-31 12:32:59.000000000 +0100
+@@ -64,6 +64,85 @@ int sysctl_lowmem_reserve_ratio[MAX_NR_Z
+ EXPORT_SYMBOL(totalram_pages);
+ EXPORT_SYMBOL(nr_swap_pages);
+ 
++/* 
++ * VM Regress allocation counters
++ */
++unsigned long kernel_allocs[MAX_ORDER];
++unsigned long userrclm_allocs[MAX_ORDER];
++unsigned long kernrclm_allocs[MAX_ORDER];
++unsigned int *zone_maps[MAX_NR_ZONES];
++unsigned int zonemap_sizes[MAX_NR_ZONES];
++unsigned long lastdebug=0;
++#define VMRALLOC_FREE 0
++#define VMRALLOC_USERRCLM 1
++#define VMRALLOC_KERNEL 2
++#define VMRALLOC_KERNRCLM 3
++
++EXPORT_SYMBOL(kernel_allocs);
++EXPORT_SYMBOL(userrclm_allocs);
++EXPORT_SYMBOL(kernrclm_allocs);
++EXPORT_SYMBOL(zone_maps);
++EXPORT_SYMBOL(zonemap_sizes);
++
++/* VM Regress: Page alloc callback */
++static inline void set_zonemap(unsigned int order, struct page *page, int mask) {
++	/* Mark the allocation in the map */
++	struct zone *zone = page_zone(page);
++	int zoneidx;
++	unsigned int *map;
++	unsigned int index = page - zone->zone_mem_map;
++	unsigned int endindex = index + (1 << order);
++	int i=0;
++
++	zoneidx = page->flags >> NODEZONE_SHIFT;
++	if (zoneidx >= MAX_NR_ZONES) BUG();
++	map = zone_maps[zoneidx];
++	if (endindex < index) {
++		printk("VMRegress bug: endindex < index :: %ud < %ud",
++				endindex, index);
++		BUG();
++	}
++
++	for (i=index; i < endindex; i++) {
++		/* Paranoid debugging check in case of coding errors */
++		if (i > zonemap_sizes[zoneidx]) {
++			if (lastdebug - jiffies > 10000) {
++				printk("VMRegress Debug: Outside zonemap range. zone = %p page = %p, mapsize = %d, i = %d", zone, page, zonemap_sizes[page->flags>>NODEZONE_SHIFT], i);
++				lastdebug = jiffies;
++			}
++			return;
++		}
++
++	  	map[i] = (order << 16) + mask;
++	}
++}
++
++static inline void tracealloc_callback(unsigned int gfp_mask, unsigned int order, struct page *page) {
++	int mask;
++	if (order >= MAX_ORDER) return;
++
++	if ((gfp_mask & __GFP_KERNRCLM) && (gfp_mask & __GFP_USERRCLM)) {
++	 	printk("D'oh\n");
++	}
++	if (gfp_mask & __GFP_KERNRCLM) {
++		kernrclm_allocs[order]++;
++		mask = VMRALLOC_KERNRCLM;
++	} else if (gfp_mask & __GFP_USERRCLM) { 
++		userrclm_allocs[order]++;
++		mask = VMRALLOC_USERRCLM;
++	} else {
++		kernel_allocs[order]++;
++		mask = VMRALLOC_KERNEL;
++	}
++
++	set_zonemap(order, page, mask);
++
++} 
++
++static inline void tracefree_callback(unsigned int order, struct page *page) {
++	set_zonemap(order, page, VMRALLOC_FREE);
++}
++
+ /*
+  * Used by page_zone() to look up the address of the struct zone whose
+  * id is encoded in the upper bits of page->flags
+@@ -276,6 +355,7 @@ static inline void __free_pages_bulk (st
+ {
+ 	unsigned long page_idx;
+ 	int order_size = 1 << order;
++	tracefree_callback(order, page);
+ 
+ 	if (unlikely(order))
+ 		destroy_compound_page(page, order);
+@@ -909,6 +989,7 @@ nopage:
+ 	return NULL;
+ got_pg:
+ 	zone_statistics(zonelist, z);
++	tracealloc_callback(gfp_mask, order, page);
+ 	return page;
+ }
+ 
+@@ -1633,6 +1714,7 @@ static void __init free_area_init_core(s
+ 	const unsigned long zone_required_alignment = 1UL << (MAX_ORDER-1);
+ 	int cpu, nid = pgdat->node_id;
+ 	unsigned long zone_start_pfn = pgdat->node_start_pfn;
++	int mapsize=0;
+ 
+ 	pgdat->nr_zones = 0;
+ 	init_waitqueue_head(&pgdat->kswapd_wait);
+@@ -1662,6 +1744,18 @@ static void __init free_area_init_core(s
+ 
+ 		zone->temp_priority = zone->prev_priority = DEF_PRIORITY;
+ 
++		/* VMRegress: Initialise the zonemap to track allocations */
++		printk("VMRegress: Initialising zone_map for zone %lu, size %d for %lu pages", j, mapsize, size);
++		mapsize = (size+1) * sizeof(unsigned int);
++		zone_maps[j] = alloc_bootmem_node(pgdat, mapsize);
++		if (zone_maps[j] == NULL) {
++			printk("VMRegress: Failed to allocate %d bytes for zone_maps", mapsize);
++			BUG();
++		}
++		zonemap_sizes[j] = size+1;
++		memset(zone_maps[j], VMRALLOC_KERNEL, mapsize);
++		printk("VMRegress: Initialised %s\n", zone_names[j]);
++
+ 		/*
+ 		 * The per-cpu-pages pools are set to around 1000th of the
+ 		 * size of the zone.  But no more than 1/4 of a meg - there's
